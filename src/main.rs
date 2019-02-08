@@ -26,63 +26,55 @@ fn main() {
         (3, &args[1])
     };
 
-    let one_second = time::Duration::from_millis(1000);
-    match fill_sentence_generator(prefix, books_path) {
-        Err(s) => exit(s),
+    let time_between_sentences = time::Duration::from_millis(1000);
+    match make_sentence_generator(prefix, books_path) {
+        Err(s) => exit(&s),
         Ok(sg) => loop {
             println!("{}", sg.get_random_sentence());
-            thread::sleep(one_second);
+            thread::sleep(time_between_sentences);
         },
     };
 }
 
-fn fill_sentence_generator(prefix: u32, books_path: &str) -> Result<SentenceGenerator, &str> {
-    valid_files(books_path).map(|files| {
+fn make_sentence_generator(prefix: u32, books_path: &str) -> Result<SentenceGenerator, String> {
+    valid_files(books_path).and_then(|files| {
         let mut sg = SentenceGenerator::new(prefix);
         for file in files {
             match fs::read_to_string(file.path()) {
                 Ok(contents) => {
-                    println!("Reading {:?}", file.path());
                     sg.add_text(&contents);
                 }
                 Err(err) => {
-                    dbg!(err);
-                    eprintln!("Could not read file {:?}", file.path());
+                    return Err(format!("Could not read file {:?}\n{}", file.path(), err));
                 }
             }
         }
-        sg
+        Ok(sg)
     })
 }
 
-fn valid_files(path: &str) -> Result<Vec<DirEntry>, &str> {
-    match fs::read_dir(path) {
-        Err(_) => Err("Failed to read dir"),
-        Ok(dirs) => {
-            let mut files = Vec::new();
-            for file in dirs {
-                match file {
-                    Ok(file) => {
-                        let path = file.path();
-                        let extension = path.extension();
-                        match extension {
-                            Some(extension) => {
-                                if extension == "txt" || extension == "md" {
-                                    println!("path: {:?}", path);
-                                    files.push(file);
-                                }
-                            }
-                            None => (), // Ignore
-                        }
-                    }
-                    Err(_) => {
-                        return Err("Reading file failed");
-                    }
-                }
-            }
-            Ok(files)
+fn valid_files(path: &str) -> Result<Vec<DirEntry>, String> {
+    fs::read_dir(path)
+        .map_err(|e| format!("Failed to read dir: {}", e))
+        .map(|dirs| {
+            dirs.filter_map(|file| file.ok())
+                .filter_map(|file| is_valid_file(file))
+                .fold(Vec::new(), |mut files: Vec<DirEntry>, file| {
+                    files.push(file);
+                    files
+                })
+        })
+}
+
+fn is_valid_file(file: DirEntry) -> Option<DirEntry> {
+    let path = file.path();
+    path.extension().and_then(|extension| {
+        if extension == "txt" || extension == "md" {
+            Some(file)
+        } else {
+            None
         }
-    }
+    })
 }
 
 fn exit(err: &str) {
