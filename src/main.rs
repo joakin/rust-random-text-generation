@@ -1,69 +1,82 @@
 use std::fs::{self, DirEntry};
-use std::{env, process, thread, time};
+use std::{env, io, process, thread, time};
 
 use rust_random_text_generation::SentenceGenerator;
 
-const USAGE: &str = "\
-    rust_random_text_generation [prefix-length=3] text_files_path
-
-Arguments:
-  - prefix-length: Prefix length for the markov chain. Optional, defaults to 3
-  - text_files_path: Path to txt files";
-
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if !(args.len() == 3 || args.len() == 2) {
-        exit(USAGE);
-    }
-
-    let (prefix, books_path) = if args.len() == 3 {
-        let prefix: u32 = args[1].parse::<u32>().unwrap_or(3);
-        let books_path = &args[2];
-        (prefix, books_path)
-    } else {
-        // if args.len() == 2
-        (3, &args[1])
-    };
-
-    let time_between_sentences = time::Duration::from_millis(1000);
-    match make_sentence_generator(prefix, books_path) {
-        Err(s) => exit(&s),
-        Ok(sg) => loop {
-            println!("{}", sg.get_random_sentence());
-            thread::sleep(time_between_sentences);
-        },
-    };
-}
-
-fn make_sentence_generator(prefix: u32, books_path: &str) -> Result<SentenceGenerator, String> {
-    valid_files(books_path).and_then(|files| {
-        let mut sg = SentenceGenerator::new(prefix);
-        for file in files {
-            match fs::read_to_string(file.path()) {
-                Ok(contents) => {
-                    sg.add_text(&contents);
+    process::exit(match run() {
+        Ok(_) => 0,
+        Err(kind) => {
+            match kind {
+                CliError::InvalidNumberOfArgs => print_usage(),
+                CliError::PrefixArgMustBeNumber => {
+                    eprintln!("The prefix argument should be a natural number");
+                    print_usage();
                 }
-                Err(err) => {
-                    return Err(format!("Could not read file {:?}\n{}", file.path(), err));
-                }
+                CliError::Io(inner) => eprintln!("{}: {}", APP_NAME, inner),
             }
+            1
         }
-        Ok(sg)
     })
 }
 
-fn valid_files(path: &str) -> Result<Vec<DirEntry>, String> {
-    fs::read_dir(path)
-        .map_err(|e| format!("Failed to read dir: {}", e))
-        .map(|dirs| {
-            dirs.filter_map(|file| file.ok())
-                .filter_map(|file| is_valid_file(file))
-                .fold(Vec::new(), |mut files: Vec<DirEntry>, file| {
-                    files.push(file);
-                    files
-                })
-        })
+fn run() -> Result<(), CliError> {
+    let args: Vec<String> = env::args().collect();
+
+    let (prefix, books_path) = if args.len() == 3 {
+        let prefix: u32 = args[1]
+            .parse::<u32>()
+            .map_err(|_| CliError::PrefixArgMustBeNumber)?;
+        let books_path = &args[2];
+        (prefix, books_path)
+    } else if args.len() == 2 {
+        (3, &args[1])
+    } else {
+        return Err(CliError::InvalidNumberOfArgs);
+    };
+
+    let files = get_valid_files(books_path)?;
+    let contents = read_files(&files)?;
+    let sg = make_sentence_generator(prefix, &contents);
+
+    let time_between_sentences = time::Duration::from_millis(1000);
+    loop {
+        println!("{}", sg.get_random_sentence());
+        thread::sleep(time_between_sentences);
+    }
+}
+
+enum CliError {
+    Io(io::Error),
+    InvalidNumberOfArgs,
+    PrefixArgMustBeNumber,
+}
+impl From<io::Error> for CliError {
+    fn from(inner: io::Error) -> CliError {
+        CliError::Io(inner)
+    }
+}
+
+const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
+
+fn print_usage() {
+    eprintln!(
+        "\
+    {} [prefix-length=3] text_files_folder_path
+
+Arguments:
+  - prefix-length: Prefix length for the markov chain. Optional, defaults to 3
+  - text_files_folder_path: Path to folder with txt files",
+        APP_NAME
+    );
+}
+
+fn get_valid_files(path: &str) -> Result<Vec<DirEntry>, CliError> {
+    let entries = fs::read_dir(path)?;
+    Ok(entries
+        .filter_map(|file| file.ok())
+        .filter_map(|file| is_valid_file(file))
+        .collect())
 }
 
 fn is_valid_file(file: DirEntry) -> Option<DirEntry> {
@@ -77,7 +90,19 @@ fn is_valid_file(file: DirEntry) -> Option<DirEntry> {
     })
 }
 
-fn exit(err: &str) {
-    eprintln!("{}", err);
-    process::exit(1);
+fn read_files(files: &Vec<DirEntry>) -> Result<Vec<String>, CliError> {
+    let mut contents = Vec::new();
+    for file in files {
+        let content = fs::read_to_string(file.path())?;
+        contents.push(content);
+    }
+    Ok(contents)
+}
+
+fn make_sentence_generator(prefix: u32, contents: &Vec<String>) -> SentenceGenerator {
+    let mut sg = SentenceGenerator::new(prefix);
+    for content in contents {
+        sg.add_text(content);
+    }
+    sg
 }
