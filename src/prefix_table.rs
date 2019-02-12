@@ -68,6 +68,7 @@ impl PrefixTable {
 #[cfg(test)]
 mod prefix_table_tests {
     use super::*;
+    use crate::parse_sentences;
 
     #[test]
     fn prefix_table() {
@@ -84,7 +85,7 @@ To an admiring bog!
 
 Are you nobody, as well?";
         let mut prefix_table = PrefixTable::new(3);
-        for sentence in sentences::from_text(text) {
+        for sentence in parse_sentences::from_text(text) {
             prefix_table.add_sentence(sentence);
         }
         assert_eq!(prefix_table.prefix_length, 3);
