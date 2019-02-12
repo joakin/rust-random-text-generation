@@ -1,5 +1,5 @@
 [package]
-name = "rust-random-text-generation"
+name = "rust_random_text_generation"
 version = "0.1.0"
 authors = ["joakin <joaquin@chimeces.com>"]
 edition = "2018"

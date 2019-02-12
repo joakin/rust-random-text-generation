@@ -131,7 +131,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-random-text-generation"
+name = "rust_random_text_generation"
 version = "0.1.0"
 dependencies = [
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
