@@ -5,45 +5,45 @@ const START: &str = "START";
 const STOP: &str = "STOP";
 
 #[derive(Debug)]
-pub struct PrefixTable {
+pub struct PrefixTable<'a> {
     prefix_length: usize,
-    table: HashMap<Vec<String>, WordDistribution>,
+    table: HashMap<Vec<&'a str>, WordDistribution<'a>>,
 }
 
-impl PrefixTable {
-    pub fn new(prefix_length: u32) -> PrefixTable {
+impl<'a> PrefixTable<'a> {
+    pub fn new(prefix_length: u32) -> PrefixTable<'a> {
         PrefixTable {
             prefix_length: prefix_length as usize,
             table: HashMap::new(),
         }
     }
 
-    pub fn add_sentence(&mut self, sentence: Vec<String>) -> &mut Self {
+    pub fn add_sentence(&mut self, sentence: Vec<&'a str>) -> &mut Self {
         let mut prefix = Prefix::new(self.prefix_length);
-        prefix.push(START.to_string());
+        prefix.push(START);
 
         for word in sentence {
             let distribution = self
                 .table
                 .entry(prefix.words.clone())
                 .or_insert(WordDistribution::new());
-            distribution.add(word.clone());
+            distribution.add(word);
 
             prefix.push(word);
         }
 
         let distribution = self
             .table
-            .entry(prefix.words.clone())
+            .entry(prefix.words)
             .or_insert(WordDistribution::new());
-        distribution.add(STOP.to_string());
+        distribution.add(STOP);
 
         self
     }
 
     pub fn walk(&self) -> Vec<String> {
         let mut prefix = Prefix::new(self.prefix_length);
-        prefix.push(START.to_string());
+        prefix.push(START);
         let mut result = Vec::new();
 
         while let Some(distribution) = self.table.get(&prefix.words) {
@@ -55,7 +55,7 @@ impl PrefixTable {
 
                     result.push(word.to_string());
 
-                    prefix.push(word.to_string());
+                    prefix.push(word);
                 }
                 None => return result,
             }
@@ -93,38 +93,34 @@ Are you nobody, as well?";
         assert_eq!(
             *prefix_table
                 .table
-                .entry(vec![
-                    "Are".to_string(),
-                    "you".to_string(),
-                    "nobody".to_string()
-                ])
+                .entry(vec!["Are", "you", "nobody"])
                 .or_insert(WordDistribution::new())
                 .words
-                .entry(",".to_string())
+                .entry(",")
                 .or_default(),
             2
         );
     }
 }
 
-struct Prefix {
+struct Prefix<'a> {
     length: usize,
-    words: Vec<String>,
+    words: Vec<&'a str>,
 }
 
-impl Prefix {
-    fn new(length: usize) -> Prefix {
+impl<'a> Prefix<'a> {
+    fn new(length: usize) -> Prefix<'a> {
         Prefix {
             length,
             words: Vec::with_capacity(length),
         }
     }
 
-    fn push(&mut self, word: String) -> &mut Prefix {
+    fn push(&mut self, word: &'a str) -> &mut Prefix<'a> {
         if self.words.len() == self.length {
             self.words.remove(0);
         }
-        self.words.push(word.to_string());
+        self.words.push(word);
         self
     }
 }
@@ -136,29 +132,29 @@ mod prefix_tests {
     #[test]
     fn prefix_test() {
         let mut prefix = Prefix::new(2);
-        prefix.push("hi".to_string());
-        prefix.push("ho".to_string());
-        assert_eq!(prefix.words, vec!["hi".to_string(), "ho".to_string()]);
+        prefix.push("hi");
+        prefix.push("ho");
+        assert_eq!(prefix.words, vec!["hi", "ho"]);
 
-        prefix.push("lets go".to_string());
-        assert_eq!(prefix.words, vec!["ho".to_string(), "lets go".to_string()]);
+        prefix.push("lets go");
+        assert_eq!(prefix.words, vec!["ho", "lets go"]);
     }
 }
 
 #[derive(Debug)]
-struct WordDistribution {
+struct WordDistribution<'a> {
     total: u32,
-    words: HashMap<String, u32>,
+    words: HashMap<&'a str, u32>,
 }
 
-impl WordDistribution {
-    fn new() -> WordDistribution {
+impl<'a> WordDistribution<'a> {
+    fn new() -> WordDistribution<'a> {
         let total = 0;
         let words = HashMap::new();
         WordDistribution { total, words }
     }
 
-    fn add(&mut self, word: String) {
+    fn add(&mut self, word: &'a str) {
         self.total += 1;
         let count = self.words.entry(word).or_default();
         *count += 1;
@@ -185,11 +181,11 @@ mod word_distribution_tests {
         let words = vec!["hi", "ho", "hi"];
         let mut distribution = WordDistribution::new();
         for word in words {
-            distribution.add(word.to_string());
+            distribution.add(word);
         }
         assert_eq!(distribution.total, 3, "Total should be 3");
         assert_eq!(
-            *distribution.words.entry("hi".to_string()).or_default(),
+            *distribution.words.entry("hi").or_default(),
             2,
             "hi should have frequency 2"
         );

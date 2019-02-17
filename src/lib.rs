@@ -3,18 +3,18 @@ mod prefix_table;
 
 use prefix_table::PrefixTable;
 
-pub struct SentenceGenerator {
-    prefix_table: PrefixTable,
+pub struct SentenceGenerator<'a> {
+    prefix_table: PrefixTable<'a>,
 }
 
-impl SentenceGenerator {
-    pub fn new(prefix_length: u32) -> SentenceGenerator {
+impl<'a> SentenceGenerator<'a> {
+    pub fn new(prefix_length: u32) -> SentenceGenerator<'a> {
         SentenceGenerator {
             prefix_table: PrefixTable::new(prefix_length),
         }
     }
 
-    pub fn add_text(&mut self, text: &str) {
+    pub fn add_text(&mut self, text: &'a str) {
         let sentences = parse_sentences::from_text(text);
         for sentence in sentences {
             self.prefix_table.add_sentence(sentence);
