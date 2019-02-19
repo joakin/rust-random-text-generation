@@ -1,5 +1,5 @@
 use std::fs::{self, DirEntry};
-use std::{env, io, process, thread, time};
+use std::{env, io, process};
 
 use rust_random_text_generation::SentenceGenerator;
 
@@ -39,11 +39,9 @@ fn run() -> Result<(), CliError> {
     let contents = read_files(&files)?;
     let sg = make_sentence_generator(prefix, &contents);
 
-    let time_between_sentences = time::Duration::from_millis(1000);
-    loop {
-        println!("{}", sg.get_random_sentence());
-        thread::sleep(time_between_sentences);
-    }
+    println!("{}", sg.get_random_sentence());
+
+    Ok(())
 }
 
 enum CliError {
