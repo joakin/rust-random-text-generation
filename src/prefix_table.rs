@@ -12,6 +12,9 @@ pub struct PrefixTable<'a> {
 
 impl<'a> PrefixTable<'a> {
     pub fn new(prefix_length: u32) -> PrefixTable<'a> {
+        if prefix_length < 1 {
+            panic!("Prefix length should be at least 1");
+        }
         PrefixTable {
             prefix_length: prefix_length as usize,
             table: HashMap::new(),
