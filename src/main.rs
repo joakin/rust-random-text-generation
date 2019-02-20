@@ -1,53 +1,25 @@
-use std::fs::{self, DirEntry};
-use std::{env, io, process};
+use clap::{App, Arg};
+use std::{io, process};
 
+mod files;
 use rust_random_text_generation::SentenceGenerator;
 
-fn main() {
-    process::exit(match run() {
-        Ok(_) => 0,
-        Err(kind) => {
-            match kind {
-                CliError::InvalidNumberOfArgs => print_usage(),
-                CliError::PrefixArgMustBeNumber => {
-                    eprintln!("The prefix argument should be a natural number");
-                    print_usage();
-                }
-                CliError::Io(inner) => eprintln!("{}: {}", APP_NAME, inner),
-            }
-            1
-        }
-    })
+const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
+
+struct Args {
+    prefix: u32,
+    number_of_sentences: u32,
+    mode: CliMode,
+    books_path: String,
 }
 
-fn run() -> Result<(), CliError> {
-    let args: Vec<String> = env::args().collect();
-
-    let (prefix, books_path) = if args.len() == 3 {
-        let prefix: u32 = args[1]
-            .parse::<u32>()
-            .map_err(|_| CliError::PrefixArgMustBeNumber)?;
-        let books_path = &args[2];
-        (prefix, books_path)
-    } else if args.len() == 2 {
-        (3, &args[1])
-    } else {
-        return Err(CliError::InvalidNumberOfArgs);
-    };
-
-    let files = get_valid_files(books_path)?;
-    let contents = read_files(&files)?;
-    let sg = make_sentence_generator(prefix, &contents);
-
-    println!("{}", sg.get_random_sentence());
-
-    Ok(())
+enum CliMode {
+    Cli,
+    Server(u32),
 }
 
 enum CliError {
     Io(io::Error),
-    InvalidNumberOfArgs,
-    PrefixArgMustBeNumber,
 }
 impl From<io::Error> for CliError {
     fn from(inner: io::Error) -> CliError {
@@ -55,46 +27,35 @@ impl From<io::Error> for CliError {
     }
 }
 
-const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
-
-fn print_usage() {
-    eprintln!(
-        "\
-    {} [prefix-length=3] text_files_folder_path
-
-Arguments:
-  - prefix-length: Prefix length for the markov chain. Optional, defaults to 3
-  - text_files_folder_path: Path to folder with txt files",
-        APP_NAME
-    );
-}
-
-fn get_valid_files(path: &str) -> Result<Vec<DirEntry>, CliError> {
-    let entries = fs::read_dir(path)?;
-    Ok(entries
-        .filter_map(|file| file.ok())
-        .filter_map(|file| is_valid_file(file))
-        .collect())
-}
-
-fn is_valid_file(file: DirEntry) -> Option<DirEntry> {
-    let path = file.path();
-    path.extension().and_then(|extension| {
-        if extension == "txt" || extension == "md" {
-            Some(file)
-        } else {
-            None
+fn main() {
+    process::exit(match run() {
+        Ok(_) => 0,
+        Err(cli_error) => {
+            match cli_error {
+                CliError::Io(inner) => eprintln!("IO Error: {}", inner),
+            }
+            1
         }
     })
 }
 
-fn read_files(files: &Vec<DirEntry>) -> Result<Vec<String>, CliError> {
-    let mut contents = Vec::new();
-    for file in files {
-        let content = fs::read_to_string(file.path())?;
-        contents.push(content);
+fn run() -> Result<(), CliError> {
+    let args = args();
+
+    let files = files::get_valid_files(&args.books_path)?;
+    let contents = files::read_files(&files)?;
+    let sg = make_sentence_generator(args.prefix, &contents);
+
+    match args.mode {
+        CliMode::Server(_port) => panic!("SERVER MODE NOT IMPLEMENTED YET"),
+        CliMode::Cli => {
+            for _ in 0..args.number_of_sentences {
+                println!("{}", sg.get_random_sentence());
+            }
+        }
     }
-    Ok(contents)
+
+    Ok(())
 }
 
 fn make_sentence_generator(prefix: u32, contents: &Vec<String>) -> SentenceGenerator {
@@ -103,4 +64,78 @@ fn make_sentence_generator(prefix: u32, contents: &Vec<String>) -> SentenceGener
         sg.add_text(content);
     }
     sg
+}
+
+fn args() -> Args {
+    let matches = App::new(APP_NAME)
+        .about("Generates random sentences out of a folder with txt books")
+        .arg(
+            Arg::with_name("prefix_length")
+                .short("p")
+                .long("prefix-length")
+                .value_name("NUMBER")
+                .help("Set the number of words to look into to find the next word.")
+                .takes_value(true)
+                .default_value("3")
+                .validator(is_natural_number),
+        )
+        .arg(
+            Arg::with_name("number_of_sentences")
+                .short("n")
+                .long("number-of-sentences")
+                .value_name("NUMBER")
+                .help("Set the number of sentences to get at once, separated by newlines. Ignored in server mode.")
+                .takes_value(true)
+                .default_value("1")
+                .validator(is_natural_number),
+        )
+        .arg(
+            Arg::with_name("server")
+                .long("server")
+                .short("s")
+                .value_name("PORT")
+                .help("Run the application in HTTP server mode")
+                .takes_value(true)
+                .validator(is_natural_number),
+        )
+        .arg(
+            Arg::with_name("folder")
+                .index(1)
+                .value_name("BOOKS_FOLDER")
+                .help("Path to the folder that contains the books")
+                .required(true),
+        )
+        .get_matches();
+
+    let prefix = matches
+        .value_of("prefix_length")
+        .unwrap()
+        .parse::<u32>()
+        .unwrap();
+
+    let number_of_sentences = matches
+        .value_of("number_of_sentences")
+        .unwrap()
+        .parse::<u32>()
+        .unwrap();
+
+    let mode = match matches.value_of("server") {
+        Some(port) => CliMode::Server(port.parse::<u32>().unwrap()),
+        None => CliMode::Cli,
+    };
+
+    let books_path = matches.value_of("folder").unwrap().to_string();
+
+    Args {
+        prefix,
+        number_of_sentences,
+        mode,
+        books_path,
+    }
+}
+
+fn is_natural_number(v: String) -> Result<(), String> {
+    v.parse::<u32>()
+        .map(|_| ())
+        .map_err(|_| String::from("Should be a natural number"))
 }
