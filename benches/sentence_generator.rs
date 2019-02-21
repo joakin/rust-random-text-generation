@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use rust_random_text_generation::SentenceGenerator;
+use rust_random_text_generation::sentence_generator::SentenceGenerator;
 use std::fs;
 
 fn criterion_benchmark(c: &mut Criterion) {
